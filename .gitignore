@@ -1,0 +1,19 @@
+# 虛擬環境
+venv/
+env/
+
+# Python 編譯檔案
+*.pyc
+__pycache__/
+
+# SQLite 資料庫
+database.db
+
+# 環境變數檔案
+.env
+
+# 日誌檔案
+*.log
+
+# 臨時檔案
+*.tmp
