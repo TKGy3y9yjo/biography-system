@@ -13,20 +13,22 @@
 ## 安裝
 1. 安裝依賴：`pip install -r requirements.txt`
 2. 配置 `.env`（見範例）。
+    SECRET_KEY=your-secret-key
+    OPENAI_API_KEY=your-openai-api-key
+    DATABASE=database.db
 3. 初始化資料庫：`python models/*.py`
 4. 啟動：`python app.py`
 
-## API
-- `POST /auth/register`：註冊
-- `GET /biography/next-question`：獲取下個問題
-- `POST /biography/answer`：提交回答
-- `POST /biography/generate`：生成自傳（帶 `style` 和 `language`）
-- `GET /biography/preview`：預覽最新自傳
-- `PUT /biography/edit`：編輯自傳
-- `GET /biography/export/<id>`：匯出自傳
+## 功能 API
+- 動態問題生成 (/next-question): 根據用戶回答生成下一個自傳問題。
+- 回答提交 (/answer): 儲存用戶回答並觸發新問題生成。
+- 自傳生成 (/generate): 根據問答資料生成約 500 字的自傳。
+- 進度追蹤 (/progress): 顯示問題回答進度和最新自傳。
+- 預覽與編輯 (/preview, /edit): 查看和修改生成的自傳。
+- 版本管理 (/versions): 列出所有自傳版本。
+- 匯出功能 (/export/<biography_id>): 支援 PDF 和 TXT 格式匯出自傳。
 
 ## 部署
-- 使用 Gunicorn：`gunicorn -w 4 app:app`
-- 配置 Nginx 反向代理。
+
 
 
