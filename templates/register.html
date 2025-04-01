@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>註冊</title>
+</head>
+<body>
+    <h1>註冊</h1>
+    <input id="email" placeholder="電子郵件">
+    <input id="password" type="password" placeholder="密碼">
+    <button id="register-btn">註冊</button>
+    <p id="status"></p>
+
+    <script>
+        document.getElementById('register-btn').onclick = () => {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            fetch('/biography/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').textContent = data.message || data.error;
+                if (data.message) window.location.href = '/login';
+            });
+        };
+    </script>
+</body>
+</html>

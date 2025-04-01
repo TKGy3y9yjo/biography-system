@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>自傳問答系統</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #question { 
+            font-size: 18px; 
+            margin-bottom: 10px; 
+            word-wrap: break-word; 
+            white-space: pre-wrap; 
+            max-width: 100%; 
+        }
+        textarea { width: 300px; height: 100px; }
+        button { margin-top: 10px; padding: 5px 10px; }
+        #status { color: #555; }
+    </style>
+</head>
+<body>
+    <h1>自傳問答系統</h1>
+    <p id="question">載入中...</p>
+    <textarea id="answer-input" placeholder="輸入你的回答"></textarea>
+    <br>
+    <button id="submit-text">提交回答</button>
+    <button id="reset">重新開始</button> <!-- 新增按鈕 -->
+    <p id="status"></p>
+
+    <script>
+        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3NDM1NjMwNTJ9.EY3D8hjUD8qa0_kmt5FfS4aqiAAQ63ejybhGOwZpD98';
+        let currentQuestionId;
+
+        function loadQuestion() {
+            fetch('/biography/next-question', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(response => {
+                console.log('Response Status:', response.status);
+                if (!response.ok) throw new Error('無法獲取問題');
+                return response.json();
+            })
+            .then(data => {
+                console.log('完整問題:', data.question.content);
+                document.getElementById('question').textContent = data.question.content;
+                currentQuestionId = data.question.id;
+                document.getElementById('status').textContent = '';
+            })
+            .catch(error => document.getElementById('status').textContent = '錯誤: ' + error);
+        }
+
+        document.getElementById('submit-text').onclick = () => {
+            const answer = document.getElementById('answer-input').value.trim();
+            if (!answer) {
+                document.getElementById('status').textContent = '請輸入回答';
+                return;
+            }
+            fetch('/biography/answer', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ question_id: currentQuestionId, answer: answer })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('提交失敗');
+                return response.json();
+            })
+            .then(data => {
+                console.log('新問題:', data.question.content);
+                document.getElementById('status').textContent = data.message;
+                document.getElementById('question').textContent = data.question.content;
+                currentQuestionId = data.question.id;
+                document.getElementById('answer-input').value = '';
+            })
+            .catch(error => document.getElementById('status').textContent = '錯誤: ' + error);
+        };
+
+        // 重置功能
+        document.getElementById('reset').onclick = () => {
+            document.getElementById('answer-input').value = '';
+            document.getElementById('status').textContent = '已重置';
+            loadQuestion(); // 重新載入問題
+        };
+
+        loadQuestion();
+    </script>
+</body>
+</html>

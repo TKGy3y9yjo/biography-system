@@ -3,6 +3,8 @@ import sqlite3
 import config
 import jwt
 from functools import wraps
+from config import ENGINE, SECRET_KEY
+from sqlalchemy.sql import text
 plans_bp = Blueprint('plans', __name__)
 
 @plans_bp.route('/test')
@@ -31,12 +33,12 @@ plans_bp = Blueprint('plans', __name__)
 @plans_bp.route('/plans', methods=['GET'])
 @token_required
 def get_plans():
-    conn = sqlite3.connect(config.DATABASE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, name, word_limit FROM plans")
-    plans = [{"id": row[0], "name": row[1], "word_limit": row[2]} for row in cursor.fetchall()]
-    conn.close()
-    return jsonify({"plans": plans}), 200
+    with ENGINE.connect() as conn:
+        result = conn.execute(
+            text("SELECT id, name, word_limit FROM plans")
+        )
+        plans = [{"id": row[0], "name": row[1], "word_limit": row[2]} for row in result.fetchall()]
+    return jsonify({"plans": plans}), 200   
 
 @plans_bp.route('/select-plan', methods=['POST'])
 @token_required
@@ -47,22 +49,22 @@ def select_plan():
 
     if not plan_id:
         return jsonify({"error": "Plan ID is required"}), 400
-    data = request.get_json()
 
-    conn = sqlite3.connect(config.DATABASE)
-    cursor = conn.cursor()
+    with ENGINE.connect() as conn:
+        # 檢查方案是否存在
+        result = conn.execute(
+            text("SELECT id FROM plans WHERE id = :plan_id"),
+            {"plan_id": plan_id}
+        )
+        if not result.fetchone():
+            return jsonify({"error": "Invalid plan ID"}), 404
 
-    # 檢查方案是否存在
-    cursor.execute("SELECT id FROM plans WHERE id = ?", (plan_id,))
-    if not cursor.fetchone():
-        conn.close()
-        return jsonify({"error": "Invalid plan ID"}), 404
-
-    # 更新或插入用戶選擇
-    cursor.execute("INSERT OR REPLACE INTO user_plans (user_id, plan_id) VALUES (?, ?)", 
-                  (user_id, plan_id))
-    conn.commit()
-    conn.close()
+        # 更新或插入用戶選擇
+        conn.execute(
+            text("INSERT OR REPLACE INTO user_plans (user_id, plan_id) VALUES (:user_id, :plan_id)"),
+            {"user_id": user_id, "plan_id": plan_id}
+        )
+        conn.commit()
     return jsonify({"message": "Plan selected successfully"}), 200
 
 

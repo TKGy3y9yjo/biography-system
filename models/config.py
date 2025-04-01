@@ -1,9 +1,7 @@
 from sqlalchemy import create_engine
 import os
 from sqlalchemy.sql import text
-from dotenv import load_dotenv
 
-load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # 替換為實際的 Key
 SECRET_KEY = os.getenv("SECRET_KEY")  # 用於 JWT，例如 'python -c "import secrets; print(secrets.token_hex(16))"'
 DATABASE = "database.db"  # SQLite 資料庫檔案名稱

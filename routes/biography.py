@@ -176,7 +176,7 @@ def submit_answer():
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=50
+                max_tokens=500
             )
             next_question = response.choices[0].message.content.strip()
             next_story_id = current_story_id

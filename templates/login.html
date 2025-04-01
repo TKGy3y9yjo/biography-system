@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>登入</title>
+</head>
+<body>
+    <h1>登入</h1>
+    <input id="email" placeholder="電子郵件">
+    <input id="password" type="password" placeholder="密碼">
+    <button id="login-btn">登入</button>
+    <p id="status"></p>
+
+    <script>
+        document.getElementById('login-btn').onclick = () => {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            fetch('/biography/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.token) {
+                    localStorage.setItem('token', data.token);
+                    window.location.href = '/';
+                } else {
+                    document.getElementById('status').textContent = data.error;
+                }
+            });
+        };
+    </script>
+</body>
+</html>

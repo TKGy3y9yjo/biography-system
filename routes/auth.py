@@ -4,12 +4,20 @@ import sqlite3
 import config
 import jwt
 from datetime import datetime, timedelta
+from config import ENGINE, SECRET_KEY
+from sqlalchemy.sql import text
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
-    data = request.get_json()
+    try:
+        data = request.get_json()  # 嘗試解析 JSON
+        if data is None:
+            return jsonify({"error": "No JSON data provided"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Failed to decode JSON: {str(e)}"}), 400
+
     email = data.get('email')
     password = data.get('password')
 
@@ -19,15 +27,17 @@ def register():
     hashed_password = pbkdf2_sha256.hash(password)
 
     try:
-        conn = sqlite3.connect(config.DATABASE)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (email, password) VALUES (?, ?)", 
-                      (email, hashed_password))
-        conn.commit()
-        conn.close()
+        with ENGINE.connect() as conn:
+            conn.execute(
+                text("INSERT INTO users (email, password) VALUES (:email, :password)"),
+                {"email": email, "password": hashed_password}
+            )
+            conn.commit()
         return jsonify({"message": "User registered successfully"}), 201
-    except sqlite3.IntegrityError:
-        return jsonify({"error": "Email already exists"}), 409
+    except Exception as e:
+        if "UNIQUE constraint failed" in str(e):
+            return jsonify({"error": "Email already exists"}), 409
+        return jsonify({"error": "Registration failed"}), 500
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -38,17 +48,18 @@ def login():
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
 
-    conn = sqlite3.connect(config.DATABASE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, password FROM users WHERE email = ?", (email,))
-    user = cursor.fetchone()
-    conn.close()
+    with ENGINE.connect() as conn:
+        result = conn.execute(
+            text("SELECT id, password FROM users WHERE email = :email"),
+            {"email": email}
+        )
+        user = result.fetchone()
 
     if user and pbkdf2_sha256.verify(password, user[1]):
         token = jwt.encode({
             'user_id': user[0],
             'exp': datetime.utcnow() + timedelta(hours=24)
-        }, config.SECRET_KEY, algorithm="HS256")
+        }, SECRET_KEY, algorithm="HS256")
         return jsonify({"token": token}), 200
     else:
         return jsonify({"error": "Invalid email or password"}), 401
