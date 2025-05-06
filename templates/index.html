@@ -1,88 +1,426 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>自傳問答系統</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        #question { 
-            font-size: 18px; 
-            margin-bottom: 10px; 
-            word-wrap: break-word; 
-            white-space: pre-wrap; 
-            max-width: 100%; 
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
         }
-        textarea { width: 300px; height: 100px; }
-        button { margin-top: 10px; padding: 5px 10px; }
-        #status { color: #555; }
-    </style>
-</head>
-<body>
-    <h1>自傳問答系統</h1>
-    <p id="question">載入中...</p>
-    <textarea id="answer-input" placeholder="輸入你的回答"></textarea>
-    <br>
-    <button id="submit-text">提交回答</button>
-    <button id="reset">重新開始</button> <!-- 新增按鈕 -->
-    <p id="status"></p>
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
 
-    <script>
-        const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3NDM1NjMwNTJ9.EY3D8hjUD8qa0_kmt5FfS4aqiAAQ63ejybhGOwZpD98';
-        let currentQuestionId;
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
 
-        function loadQuestion() {
-            fetch('/biography/next-question', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            })
-            .then(response => {
-                console.log('Response Status:', response.status);
-                if (!response.ok) throw new Error('無法獲取問題');
-                return response.json();
-            })
-            .then(data => {
-                console.log('完整問題:', data.question.content);
-                document.getElementById('question').textContent = data.question.content;
-                currentQuestionId = data.question.id;
-                document.getElementById('status').textContent = '';
-            })
-            .catch(error => document.getElementById('status').textContent = '錯誤: ' + error);
-        }
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
 
-        document.getElementById('submit-text').onclick = () => {
-            const answer = document.getElementById('answer-input').value.trim();
-            if (!answer) {
-                document.getElementById('status').textContent = '請輸入回答';
-                return;
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
             }
-            fetch('/biography/answer', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ question_id: currentQuestionId, answer: answer })
-            })
-            .then(response => {
-                if (!response.ok) throw new Error('提交失敗');
-                return response.json();
-            })
-            .then(data => {
-                console.log('新問題:', data.question.content);
-                document.getElementById('status').textContent = data.message;
-                document.getElementById('question').textContent = data.question.content;
-                currentQuestionId = data.question.id;
-                document.getElementById('answer-input').value = '';
-            })
-            .catch(error => document.getElementById('status').textContent = '錯誤: ' + error);
-        };
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biography System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div class="container mx-auto p-4">
+    <!-- 認證區 -->
+    <div id="auth-section" class="mb-6">
+      <h1 class="text-2xl font-bold mb-4">Biography System</h1>
+      <div id="login-form" class="bg-white p-6 rounded shadow-md">
+        <h2 class="text-xl font-semibold mb-4">登入</h2>
+        <input id="login-email" type="email" placeholder="電子郵件" class="w-full p-2 mb-2 border rounded">
+        <input id="login-password" type="password" placeholder="密碼" class="w-full p-2 mb-2 border rounded">
+        <button onclick="login()" class="bg-blue-500 text-white p-2 rounded w-full">登入</button>
+        <p class="mt-2 text-center">
+          沒有帳號？<a href="#" onclick="showRegister()" class="text-blue-500">註冊</a>
+        </p>
+      </div>
+      <div id="register-form" class="bg-white p-6 rounded shadow-md hidden">
+        <h2 class="text-xl font-semibold mb-4">註冊</h2>
+        <input id="register-email" type="email" placeholder="電子郵件" class="w-full p-2 mb-2 border rounded">
+        <input id="register-password" type="password" placeholder="密碼" class="w-full p-2 mb-2 border rounded">
+        <button onclick="register()" class="bg-green-500 text-white p-2 rounded w-full">註冊</button>
+        <p class="mt-2 text-center">
+          已有帳號？<a href="#" onclick="showLogin()" class="text-blue-500">登入</a>
+        </p>
+      </div>
+    </div>
 
-        // 重置功能
-        document.getElementById('reset').onclick = () => {
-            document.getElementById('answer-input').value = '';
-            document.getElementById('status').textContent = '已重置';
-            loadQuestion(); // 重新載入問題
-        };
+    <!-- 主功能區 -->
+    <div id="main-section" class="hidden">
+      <!-- 進度區 -->
+      <div id="progress-section" class="bg-white p-6 rounded shadow-md mb-6">
+        <h2 class="text-xl font-semibold mb-4">進度</h2>
+        <p id="progress-info" class="mb-2"></p>
+        <button onclick="fetchProgress()" class="bg-blue-500 text-white p-2 rounded">刷新進度</button>
+      </div>
 
-        loadQuestion();
-    </script>
+      <!-- 問題與回答區 -->
+      <div id="question-section" class="bg-white p-6 rounded shadow-md mb-6">
+        <h2 class="text-xl font-semibold mb-4">回答問題</h2>
+        <p id="current-question" class="mb-2"></p>
+        <input id="question-id" type="hidden">
+        <textarea id="answer-content" placeholder="輸入你的回答..." class="w-full p-2 border rounded mb-2"></textarea>
+        <button onclick="submitAnswer()" class="bg-blue-500 text-white p-2 rounded w-full">提交回答</button>
+        <button onclick="fetchNextQuestion()" class="bg-gray-500 text-white p-2 rounded w-full mt-2">獲取下一個問題</button>
+      </div>
+
+      <!-- 自傳生成與預覽區 -->
+      <div id="biography-section" class="bg-white p-6 rounded shadow-md mb-6">
+        <h2 class="text-xl font-semibold mb-4">自傳管理</h2>
+        <div class="mb-4">
+          <label class="block mb-2">自傳風格</label>
+          <select id="biography-style" class="w-full p-2 border rounded">
+            <option value="自然">自然</option>
+            <option value="正式">正式</option>
+            <option value="文藝">文藝</option>
+          </select>
+        </div>
+        <div class="mb-4">
+          <label class=" multipleselect id="biography-language" class="w-full p-2 border rounded">
+            <option value="中文">中文</option>
+            <option value="英文">英文</option>
+          </select>
+        </div>
+        <button onclick="generateBiography()" class="bg-green-500 text-white p-2 rounded w-full mb-2">生成自傳</button>
+        <button onclick="previewBiography()" class="bg-blue-500 text-white p-2 rounded w-full">預覽自傳</button>
+        <div id="biography-preview" class="mt-4 p-4 bg-gray-50 rounded"></div>
+      </div>
+
+      <!-- 計劃選擇區 -->
+      <div id="plan-section" class="bg-white p-6 rounded shadow-md mb-6">
+        <h2 class="text-xl font-semibold mb-4">選擇計劃</h2>
+        <div id="plan-list" class="mb-4"></div>
+        <select id="plan-id" class="w-full p-2 border rounded mb-2"></select>
+        <button onclick="selectPlan()" class="bg-blue-500 text-white p-2 rounded w-full">選擇計劃</button>
+      </div>
+
+      <!-- 登出 -->
+      <button onclick="logout()" class="bg-red-500 text-white p-2 rounded">登出</button>
+    </div>
+  </div>
+
+  <script>
+    let token = null;
+
+    // 切換到註冊表單
+    function showRegister() {
+      console.log('Showing register form');
+      document.getElementById('login-form').classList.add('hidden');
+      document.getElementById('register-form').classList.remove('hidden');
+    }
+
+    // 切換到登入表單
+    function showLogin() {
+      console.log('Showing login form');
+      document.getElementById('register-form').classList.add('hidden');
+      document.getElementById('login-form').classList.remove('hidden');
+    }
+
+    // 註冊
+    async function register() {
+      const email = document.getElementById('register-email').value;
+      const password = document.getElementById('register-password').value;
+
+      if (!email || !password) {
+        alert('請輸入電子郵件和密碼');
+        return;
+      }
+
+      console.log('Sending register request:', { email, password });
+      try {
+        const response = await fetch('http://localhost:5000/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        console.log('Register response:', data);
+        if (response.ok) {
+          alert('註冊成功，請登入！');
+          showLogin();
+        } else {
+          alert(data.error || '註冊失敗');
+        }
+      } catch (error) {
+        console.error('Register error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 登入
+    async function login() {
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+
+      if (!email || !password) {
+        alert('請輸入電子郵件和密碼');
+        return;
+      }
+
+      console.log('Sending login request:', { email });
+      try {
+        const response = await fetch('http://localhost:5000/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        console.log('Login response:', data);
+        if (response.ok) {
+          token = data.token;
+          document.getElementById('auth-section').classList.add('hidden');
+          document.getElementById('main-section').classList.remove('hidden');
+          fetchNextQuestion();
+          fetchProgress();
+          fetchPlans();
+        } else {
+          alert(data.error || '登入失敗');
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 登出
+    function logout() {
+      console.log('Logging out');
+      token = null;
+      document.getElementById('auth-section').classList.remove('hidden');
+      document.getElementById('main-section').classList.add('hidden');
+      document.getElementById('login-email').value = '';
+      document.getElementById('login-password').value = '';
+      document.getElementById('biography-preview').innerHTML = '';
+      document.getElementById('plan-list').innerHTML = '';
+    }
+
+    // 獲取下一個問題
+    async function fetchNextQuestion() {
+      console.log('Fetching next question');
+      try {
+        const response = await fetch('http://localhost:5000/biography/next-question', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        console.log('Next question response:', data);
+        if (response.ok) {
+          if (data.question) {
+            document.getElementById('current-question').textContent = `問題（${data.question.theme}）：${data.question.content}`;
+            document.getElementById('question-id').value = data.question.id;
+          } else {
+            document.getElementById('current-question').textContent = '所有問題已完成，請生成自傳！';
+            document.getElementById('question-id').value = '';
+          }
+        } else {
+          alert(data.error || '無法獲取問題');
+        }
+      } catch (error) {
+        console.error('Fetch next question error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 提交回答
+    async function submitAnswer() {
+      const questionId = document.getElementById('question-id').value;
+      const answer = document.getElementById('answer-content').value;
+
+      if (!questionId || !answer) {
+        alert('問題 ID 或回答內容不能為空');
+        return;
+      }
+
+      console.log('Submitting answer:', { questionId, answer });
+      try {
+        const response = await fetch('http://localhost:5000/biography/answer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ question_id: parseInt(questionId), answer })
+        });
+        const data = await response.json();
+        console.log('Submit answer response:', data);
+        if (response.ok) {
+          document.getElementById('answer-content').value = '';
+          if (data.question) {
+            document.getElementById('current-question').textContent = `問題（${data.question.theme}）：${data.question.content}`;
+            document.getElementById('question-id').value = data.question.id;
+          } else {
+            document.getElementById('current-question').textContent = '所有問題已完成，請生成自傳！';
+            document.getElementById('question-id').value = '';
+          }
+          fetchProgress();
+        } else {
+          alert(data.error || '提交回答失敗');
+        }
+      } catch (error) {
+        console.error('Submit answer error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 獲取進度
+    async function fetchProgress() {
+      console.log('Fetching progress');
+      try {
+        const response = await fetch('http://localhost:5000/biography/progress', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        console.log('Progress response:', data);
+        if (response.ok) {
+          const progressInfo = `
+            總問題數：${data.total_questions}<br>
+            已回答問題數：${data.answered_questions}<br>
+            回答總字數：${data.total_length}<br>
+            完成百分比：${data.completion_percentage.toFixed(2)}%
+          `;
+          document.getElementById('progress-info').innerHTML = progressInfo;
+        } else {
+          alert(data.error || '無法獲取進度');
+        }
+      } catch (error) {
+        console.error('Fetch progress error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 生成自傳
+    async function generateBiography() {
+      const style = document.getElementById('biography-style').value;
+      const language = document.getElementById('biography-language').value;
+
+      console.log('Generating biography:', { style, language });
+      try {
+        const response = await fetch('http://localhost:5000/biography/generate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ style, language })
+        });
+        const data = await response.json();
+        console.log('Generate biography response:', data);
+        if (response.ok) {
+          alert('自傳生成成功！');
+          previewBiography();
+        } else {
+          alert(data.error || '生成自傳失敗');
+        }
+      } catch (error) {
+        console.error('Generate biography error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 預覽自傳
+    async function previewBiography() {
+      console.log('Previewing biography');
+      try {
+        const response = await fetch('http://localhost:5000/biography/preview', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        console.log('Preview biography response:', data);
+        if (response.ok) {
+          document.getElementById('biography-preview').innerHTML = `
+            <h3 class="text-lg font-semibold mb-2">最新自傳（${data.biography.style}，${data.biography.created_at}）</h3>
+            <p>${data.biography.content.replace(/\n/g, '<br>')}</p>
+          `;
+        } else {
+          alert(data.error || '無法預覽自傳');
+        }
+      } catch (error) {
+        console.error('Preview biography error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 獲取計劃列表
+    async function fetchPlans() {
+      console.log('Fetching plans');
+      try {
+        const response = await fetch('http://localhost:5000/plans/plans', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await response.json();
+        console.log('Plans response:', data);
+        if (response.ok) {
+          const planList = document.getElementById('plan-list');
+          const planSelect = document.getElementById('plan-id');
+          planList.innerHTML = '';
+          planSelect.innerHTML = '';
+          data.plans.forEach(plan => {
+            planList.innerHTML += `<p>${plan.name} (字數限制：${plan.word_limit || '無限制'})</p>`;
+            const option = document.createElement('option');
+            option.value = plan.id;
+            option.textContent = plan.name;
+            planSelect.appendChild(option);
+          });
+        } else {
+          alert(data.error || '無法獲取計劃');
+        }
+      } catch (error) {
+        console.error('Fetch plans error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+
+    // 選擇計劃
+    async function selectPlan() {
+      const planId = document.getElementById('plan-id').value;
+
+      console.log('Selecting plan:', { planId });
+      try {
+        const response = await fetch('http://localhost:5000/plans/select-plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ plan_id: parseInt(planId) })
+        });
+        const data = await response.json();
+        console.log('Select plan response:', data);
+        if (response.ok) {
+          alert('計劃選擇成功！');
+          fetchPlans();
+        } else {
+          alert(data.error || '選擇計劃失敗');
+        }
+      } catch (error) {
+        console.error('Select plan error:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
+  </script>
 </body>
 </html>

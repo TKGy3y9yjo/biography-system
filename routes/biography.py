@@ -172,7 +172,7 @@ def submit_answer():
 
         if story_count < MAX_QUESTIONS_PER_STORY:  # 深入當前故事
             client = OpenAI(api_key=config.OPENAI_API_KEY)
-            prompt = f"根據以下回答生成下一個與'{current_theme}'相關的自傳問題，要求啟發性且與回答內容相關，避免重複之前的故事：\n回答：'{answer}'"
+            prompt = f"根據以下回答生成下一個與'{current_theme}'相關的自傳問題，要求啟發性且與回答內容相關：\n回答：'{answer}'"
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
