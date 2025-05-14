@@ -41,6 +41,28 @@ def token_required(f):
         return f(*args, **kwargs)
     return decorator
 
+@biography_bp.route('/reset', methods=['POST'])
+@token_required
+def reset_questions():
+    user_id = request.user_id
+    try:
+        with ENGINE.connect() as conn:
+            # 刪除用戶的所有回答
+            conn.execute(
+                text("DELETE FROM answers WHERE user_id = :user_id"),
+                {"user_id": user_id}
+            )
+            # 刪除用戶的所有問題
+            conn.execute(
+                text("DELETE FROM questions WHERE user_id = :user_id"),
+                {"user_id": user_id}
+            )
+            conn.commit()
+        return jsonify({"message": "Questions and answers reset successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to reset: {str(e)}"}), 500
+
+
 @biography_bp.route('/next-question', methods=['GET'])
 @token_required
 def get_next_question():
