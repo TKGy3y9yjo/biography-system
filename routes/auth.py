@@ -12,21 +12,16 @@ auth_bp = Blueprint('auth', __name__)
 @auth_bp.route('/register', methods=['POST'])
 def register():
     try:
-        data = request.get_json()  # 嘗試解析 JSON
+        data = request.get_json()
         if data is None:
+            print("No JSON data received")  # 增加日誌
             return jsonify({"error": "No JSON data provided"}), 400
-    except Exception as e:
-        return jsonify({"error": f"Failed to decode JSON: {str(e)}"}), 400
-
-    email = data.get('email')
-    password = data.get('password')
-
-    if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
-
-    hashed_password = pbkdf2_sha256.hash(password)
-
-    try:
+        email = data.get('email')
+        password = data.get('password')
+        print(f"Received email: {email}")  # 增加日誌
+        if not email or not password:
+            return jsonify({"error": "Email and password are required"}), 400
+        hashed_password = pbkdf2_sha256.hash(password)
         with ENGINE.connect() as conn:
             conn.execute(
                 text("INSERT INTO users (email, password) VALUES (:email, :password)"),
@@ -35,9 +30,10 @@ def register():
             conn.commit()
         return jsonify({"message": "User registered successfully"}), 201
     except Exception as e:
+        print(f"Registration error: {str(e)}")  # 增加日誌
         if "UNIQUE constraint failed" in str(e):
             return jsonify({"error": "Email already exists"}), 409
-        return jsonify({"error": "Registration failed"}), 500
+        return jsonify({"error": f"Registration failed: {str(e)}"}), 500
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
