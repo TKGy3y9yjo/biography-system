@@ -42,20 +42,29 @@
 
       <!-- 問題與回答區 -->
       <div id="question-section" class="bg-white p-6 rounded shadow-md mb-6">
-        <h2 class="text-xl font-semibold mb-4">回答問題</h2>
+        <h2 class="text-lg font-semibold mb-4">回答問題</h2>
         <p id="current-question" class="mb-2"></p>
         <input id="question-id" type="hidden">
-        <textarea id="answer-content" placeholder="輸入你的回答..." class="w-full p-2 border rounded mb-2"></textarea>
-        <button onclick="submitAnswer()" class="bg-blue-500 text-white p-2 rounded w-full mb-2">提交回答</button>
-        <button onclick="rezeroAnswer()" class="bg-red-500 text-white p-2 rounded w-full mb-2">重新開始問答</button>
+        <textarea id="answer-content" placeholder="請在此輸入您的回答..." class="w-full p-2 border rounded mb-2"></textarea>
+        <button onclick="submitAnswer()" class="bg-blue-500 text-white p-2 rounded w-full mb-2">提交文字回答</button>
+        <div class="mb-2">
+          <label class="block mb-2">或上傳音訊回答</label>
+          <input id="audio-file" type="file" accept="audio/*" class="w-full p-2 border rounded mb-2">
+        </div>
+        <button onclick="transcribeAnswer()" class="bg-green-500 text-white p-2 rounded w-full mb-2">提交音訊回答</button>
+        <div class="mb-2">
+          <label class="block mb-2">或即時錄音</label>
+          <button id="start-record" onclick="startRecording()" class="bg-purple-500 text-white p-2 rounded w-full mb-2" disabled>開始錄音</button>
+          <button id="stop-record" onclick="stopRecordingAndUpload()" class="bg-red-500 text-white p-2 rounded w-full mb-2 hidden">停止錄音並上傳</button>
+        </div>
+        <button onclick="rezeroAnswer()" class="bg-red-500 text-white p-2 rounded w-full mb-2">重置回答</button>
         <button onclick="fetchNextQuestion()" class="bg-gray-500 text-white p-2 rounded w-full">獲取下一個問題</button>
       </div>
-
       <!-- 自傳生成與預覽區 -->
       <div id="biography-section" class="bg-white p-6 rounded shadow-md mb-6">
-        <h2 class="text-xl font-semibold mb-4">自傳管理</h2>
+        <h2 class="text-lg font-semibold mb-4">生成自傳</h2>
         <div class="mb-4">
-          <label class="block mb-2">自傳風格</label>
+          <label class="block mb-2">風格</label>
           <select id="biography-style" class="w-full p-2 border rounded">
             <option value="自然">自然</option>
             <option value="正式">正式</option>
@@ -66,10 +75,42 @@
           <label class="block mb-2">語言</label>
           <select id="biography-language" class="w-full p-2 border rounded">
             <option value="中文">中文</option>
-            <option value="英文">英文</option>
+            <option value="English">英文</option>
           </select>
         </div>
-        <button onclick="generateBiography()" class="bg-green-500 text-white p-2 rounded w-full mb-2">生成自傳</button>
+        <div class="mb-4">
+          <label class="block mb-2">字數</label>
+          <select id="biography-length" class="w-full p-2 border rounded">
+            <option value="300 字">300 字</option>
+            <option value="500 字">500 字</option>
+            <option value="800 字">800 字</option>
+          </select>
+        </div>
+        <div class="mb-4">
+          <label class="block mb-2">用途</label>
+          <select id="biography-usage" class="w-full p-2 border rounded">
+            <option value="個人紀錄">個人紀錄</option>
+            <option value="求職">求職</option>
+            <option value="申請學校">申請學校</option>
+          </select>
+        </div>
+        <div class="mb-4">
+          <label class="block mb-2">情感</label>
+          <select id="biography-emotion" class="w-full p-2 border rounded">
+            <option value="積極">積極</option>
+            <option value="感性">感性</option>
+            <option value="勵志">勵志</option>
+          </select>
+        </div>
+        <div class="mb-4">
+          <label class="block mb-2">目的</label>
+          <select id="biography-aim" class="w-full p-2 border rounded">
+            <option value="展示個人成長">展示個人成長</option>
+            <option value="申請學校">申請學校</option>
+            <option value="分享職業歷程">分享職業歷程</option>
+          </select>
+        </div>
+        <button onclick="generateBiography()" class="bg-green-600 text-white p-2 rounded w-full mb-2">生成自傳</button>
         <button onclick="previewBiography()" class="bg-blue-500 text-white p-2 rounded w-full">預覽自傳</button>
         <div id="biography-preview" class="mt-4 p-4 bg-gray-50 rounded"></div>
       </div>
@@ -89,7 +130,16 @@
 
   <script>
     let token = null;
-
+    // 檢查麥克風權限
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(() => {
+        document.getElementById('start-record').disabled = false;
+      })
+      .catch((error) => {
+        console.error('麥克風權限錯誤:', error);
+        document.getElementById('start-record').disabled = true;
+        document.getElementById('start-record').textContent = '錄音不可用（無麥克風權限）';
+      });
     // 切換到註冊表單
     function showRegister() {
       console.log('Showing register form');
@@ -248,6 +298,51 @@
         alert('錯誤：' + error.message);
       }
     }
+    async function transcribeAnswer() {
+      const questionId = document.getElementById('question-id').value;
+      const audioFile = document.getElementById('audio-file').files[0];
+
+      if (!questionId) {
+        alert('請先獲取一個問題');
+        return;
+      }
+      if (!audioFile) {
+        alert('請選擇音訊檔案');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', audioFile);
+      formData.append('question_id', questionId);
+
+      try {
+        const response = await fetch('http://localhost:5000/biography/transcribe', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+        const data = await response.json();
+        console.log('音訊回答回應:', data);
+        if (response.ok) {
+          alert(`音訊回答已儲存：${data.transcription}`);
+          if (data.question) {
+            document.getElementById('current-question').textContent = data.question.content;
+            document.getElementById('question-id').value = data.question.id;
+            document.getElementById('audio-file').value = ''; // 清空檔案輸入
+          } else {
+            document.getElementById('current-question').textContent = '所有問題已完成，可生成自傳';
+            document.getElementById('question-id').value = '';
+          }
+        } else {
+          alert(data.error || '提交音訊回答失敗');
+        }
+      } catch (error) {
+        console.error('音訊回答錯誤:', error);
+        alert('錯誤：' + error.message);
+      }
+    }
 
     // 重新開始問答
     async function rezeroAnswer() {
@@ -281,6 +376,84 @@
         alert('錯誤：' + error.message);
       }
     }
+    
+    let mediaRecorder = null;
+    let audioChunks = [];
+
+    async function startRecording() {
+      const questionId = document.getElementById('question-id').value;
+      if (!questionId) {
+        alert('請先獲取一個問題');
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.start();
+        document.getElementById('start-record').classList.add('hidden');
+        document.getElementById('stop-record').classList.remove('hidden');
+      } catch (error) {
+        console.error('錄音錯誤:', error);
+        alert('無法開始錄音：請檢查麥克風權限');
+      }
+    }
+
+    async function stopRecordingAndUpload() {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+        alert('尚未開始錄音');
+        return;
+      }
+
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      document.getElementById('start-record').classList.remove('hidden');
+      document.getElementById('stop-record').classList.add('hidden');
+
+      mediaRecorder.onstop = async () => {
+        const questionId = document.getElementById('question-id').value;
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.webm');
+        formData.append('question_id', questionId);
+
+        try {
+          const response = await fetch('http://localhost:5000/biography/transcribe', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          });
+          const data = await response.json();
+          console.log('錄音回答回應:', data);
+          if (response.ok) {
+            alert(`錄音回答已儲存：${data.transcription}`);
+            if (data.question) {
+              document.getElementById('current-question').textContent = data.question.content;
+              document.getElementById('question-id').value = data.question.id;
+            } else {
+              document.getElementById('current-question').textContent = '所有問題已完成，可生成自傳';
+              document.getElementById('question-id').value = '';
+            }
+          } else {
+            alert(data.error || '提交錄音回答失敗');
+          }
+        } catch (error) {
+          console.error('錄音上傳錯誤:', error);
+          alert('錯誤：' + error.message);
+        }
+
+        audioChunks = []; // 清空錄音片段
+      };
+    }
 
     // 獲取進度
     async function fetchProgress() {
@@ -312,8 +485,12 @@
     async function generateBiography() {
       const style = document.getElementById('biography-style').value;
       const language = document.getElementById('biography-language').value;
+      const length = document.getElementById('biography-length').value;
+      const usage = document.getElementById('biography-usage').value;
+      const emotion = document.getElementById('biography-emotion').value;
+      const aim = document.getElementById('biography-aim').value;
 
-      console.log('Generating biography:', { style, language });
+      console.log('生成自傳:', { style, language, length, usage, emotion, aim });
       try {
         const response = await fetch('http://localhost:5000/biography/generate', {
           method: 'POST',
@@ -321,10 +498,10 @@
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ style, language })
+          body: JSON.stringify({ style, language, length, usage, emotion, aim })
         });
         const data = await response.json();
-        console.log('Generate biography response:', data);
+        console.log('生成自傳回應:', data);
         if (response.ok) {
           alert('自傳生成成功！');
           previewBiography();
@@ -332,7 +509,7 @@
           alert(data.error || '生成自傳失敗');
         }
       } catch (error) {
-        console.error('Generate biography error:', error);
+        console.error('生成自傳錯誤:', error);
         alert('錯誤：' + error.message);
       }
     }

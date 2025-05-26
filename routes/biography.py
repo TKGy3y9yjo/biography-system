@@ -13,11 +13,13 @@ from config import ENGINE
 from sqlalchemy.sql import text
 from flask_caching import Cache
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
-
+app.config['UPLOAD_FOLDER'] = 'uploads'
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 biography_bp = Blueprint('biography', __name__)
 
 THEMES = ["童年", "教育", "職業", "家庭", "夢想"]
@@ -196,9 +198,10 @@ def submit_answer():
             client = OpenAI(api_key=config.OPENAI_API_KEY)
             prompt = f"根據以下回答生成下一個與'{current_theme}'相關的自傳問題，要求啟發性且與回答內容相關：\n回答：'{answer}'"
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=500
+                max_tokens=500,
+                temperature=0.9
             )
             next_question = response.choices[0].message.content.strip()
             next_story_id = current_story_id
@@ -224,23 +227,152 @@ def submit_answer():
         conn.commit()
         return jsonify({"message": "Answer submitted, next question generated", "question": {"id": question_id, "content": next_question, "question_order": next_order, "theme": current_theme, "story_id": next_story_id}}), 200
 
+@biography_bp.route('/transcribe', methods=['POST'])
+@token_required
+def transcribe_audio():
+    user_id = request.user_id
+
+    # 檢查音訊檔案
+    if 'file' not in request.files:
+        return jsonify({"error": "缺少音訊檔案"}), 400
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"error": "未選擇檔案"}), 400
+
+    # 檢查 question_id
+    question_id = request.form.get('question_id')
+    if not question_id:
+        return jsonify({"error": "缺少 question_id"}), 400
+
+    # 保存音訊檔案
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+    file.save(filepath)
+
+    # 初始化 OpenAI 客戶端
+    client = OpenAI(api_key=config.OPENAI_API_KEY)
+
+    # 轉錄音訊
+    try:
+        with open(filepath, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        text = transcription.text
+    except Exception as e:
+        return jsonify({"error": f"轉錄失敗：{str(e)}"}), 500
+    finally:
+        # 清理檔案（可選）
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+    # 儲存回答到 answers 表
+    try:
+        with ENGINE.connect() as conn:
+            conn.execute(
+                text("INSERT INTO answers (user_id, question_id, answer) VALUES (:user_id, :question_id, :answer)"),
+                {"user_id": user_id, "question_id": question_id, "answer": text}
+            )
+            conn.commit()
+    except Exception as e:
+        return jsonify({"error": f"儲存回答失敗：{str(e)}"}), 500
+
+    # 檢查是否需要生成下一個問題（與 /biography/answer 邏輯一致）
+    with ENGINE.connect() as conn:
+        result = conn.execute(
+            text("SELECT question_order, theme, story_id FROM questions WHERE id = :question_id AND user_id = :user_id"),
+            {"question_id": question_id, "user_id": user_id}
+        )
+        question_data = result.fetchone()
+        if not question_data:
+            return jsonify({"error": "無效的 question_id"}), 404
+        current_order, current_theme, current_story_id = question_data
+        next_order = current_order + 1
+
+        # 檢查回答數量和字數
+        result = conn.execute(
+            text("SELECT COUNT(*) FROM answers WHERE user_id = :user_id"),
+            {"user_id": user_id}
+        )
+        answer_count = result.fetchone()[0]
+        result = conn.execute(
+            text("SELECT SUM(LENGTH(answer)) FROM answers WHERE user_id = :user_id"),
+            {"user_id": user_id}
+        )
+        total_length = result.fetchone()[0] or 0
+
+        if answer_count >= 10 and total_length >= 200:
+            conn.commit()
+            return jsonify({"message": "音訊回答已儲存，足夠資料可生成自傳", "transcription": text}), 200
+
+        # 生成下一個問題（重用 /biography/answer 的邏輯）
+        result = conn.execute(
+            text("SELECT COUNT(*) FROM questions WHERE user_id = :user_id AND theme = :theme"),
+            {"user_id": user_id, "theme": current_theme}
+        )
+        theme_question_count = result.fetchone()[0]
+        result = conn.execute(
+            text("SELECT COUNT(*) FROM questions WHERE user_id = :user_id AND theme = :theme AND story_id = :story_id"),
+            {"user_id": user_id, "theme": current_theme, "story_id": current_story_id}
+        )
+        story_count = result.fetchone()[0]
+
+        if story_count < MAX_QUESTIONS_PER_STORY:
+            prompt = f"根據以下回答生成下一個與'{current_theme}'相關的自傳問題，要求啟發性且與回答內容相關：\n回答：'{text}'"
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.9
+            )
+            next_question = response.choices[0].message.content.strip()
+            next_story_id = current_story_id
+        elif theme_question_count < MAX_QUESTIONS_PER_THEME:
+            next_story_id = current_story_id + 1
+            next_question = f"除了剛才提到的，關於你的{current_theme}還有什麼其他特別的經歷嗎？"
+        else:
+            current_theme_index = THEMES.index(current_theme)
+            if current_theme_index + 1 < len(THEMES):
+                next_theme = THEMES[current_theme_index + 1]
+                next_question = f"關於你的{next_theme}，有什麼特別的經歷嗎？"
+                next_story_id = 1
+            else:
+                conn.commit()
+                return jsonify({"message": "音訊回答已儲存，所有主題完成，可生成自傳", "transcription": text}), 200
+
+        result = conn.execute(
+            text("INSERT INTO questions (user_id, content, question_order, theme, story_id) VALUES (:user_id, :content, :question_order, :theme, :story_id) RETURNING id"),
+            {"user_id": user_id, "content": next_question, "question_order": next_order, "theme": current_theme, "story_id": next_story_id}
+        )
+        question_id = result.fetchone()[0]
+        conn.commit()
+
+    return jsonify({
+        "message": "音訊回答已儲存，下一個問題已生成",
+        "transcription": text,
+        "question": {"id": question_id, "content": next_question, "question_order": next_order, "theme": current_theme, "story_id": next_story_id}
+    }), 200
+    
 @biography_bp.route('/generate', methods=['POST'])
 @token_required
 def generate_biography():
     user_id = request.user_id
     data = request.get_json()
     style = data.get('style', '自然')
-    language = data.get('language', '中文')  # 預設中文
+    language = data.get('language', '中文')
+    # 新增參數，預設值可根據需求調整
+    length = data.get('length', '500 字')
+    usage = data.get('usage', '個人紀錄')
+    emotion = data.get('emotion', '積極')
+    aim = data.get('aim', '展示個人經歷')
 
     with ENGINE.connect() as conn:
-        # 檢查主題計數（可選，若不需要可移除）
         result = conn.execute(
             text("SELECT theme, COUNT(*) FROM questions WHERE user_id = :user_id GROUP BY theme"),
             {"user_id": user_id}
         )
         theme_counts = dict(result.fetchall())
 
-        # 獲取問答資料
         result = conn.execute(
             text("""
                 SELECT q.theme, q.content, a.answer
@@ -261,21 +393,23 @@ def generate_biography():
         if answer_count < 10 or total_length < 200:
             return jsonify({"error": "Insufficient data for biography generation"}), 400
 
-        # 優化 Prompt 並加入語言
-        prompt = f"以下是用戶的自傳問答資料，請根據這些資料撰寫一篇約 500 字的自傳文章，語言為'{language}'，風格為'{style}'。文章需按主題分段（每個主題一段），確保內容連貫、生動且不重複，並適當補充細節。資料如下：\n"
+        # 格式化問答資料為逐字稿
+        text = ""
         for qa in qa_data:
-            prompt += f"主題：{qa['theme']}，問題：{qa['question']}，回答：{qa['answer']}\n"
+            text += f"主題：{qa['theme']}\n問題：{qa['question']}\n回答：{qa['answer']}\n\n"
+
+        # 新 prompt 格式
+        prompt = f"{text}\n根據這份逐字稿/素材，請幫我改寫成一篇自傳，風格為{style}，字數{length}以上，用途為{usage}明確，具備{emotion}的情感，內容需保留真實感與可讀性，目的是{aim}"
 
         client = OpenAI(api_key=config.OPENAI_API_KEY)
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=600,
-            temperature=0.7
+            max_tokens=800,  # 增加 max_tokens 以支援更長的生成
+            temperature=0.9
         )
         biography_content = response.choices[0].message.content.strip()
 
-        # 插入自傳，包含 language 欄位
         result = conn.execute(
             text("INSERT INTO biographies (user_id, content, style, language) VALUES (:user_id, :content, :style, :language) RETURNING id"),
             {"user_id": user_id, "content": biography_content, "style": style, "language": language}
