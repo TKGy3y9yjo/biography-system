@@ -9,7 +9,7 @@ from sqlalchemy.sql import text
 
 print("OPENAI_API_KEY:", config.OPENAI_API_KEY)
 # 初始化 Flask 應用
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static', static_folder='static')
 
 # 配置 SECRET_KEY
 app.config["SECRET_KEY"] = config.SECRET_KEY
@@ -35,6 +35,7 @@ setup_database()
 @app.route('/')
 def hello():
     return render_template('index.html')
+
 
 if __name__ == "__main__":
     app.run(debug=True)
