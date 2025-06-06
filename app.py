@@ -19,7 +19,7 @@ CORS(app, resources={r"/*": {"origins": ["http://localhost:5000", "http://127.0.
 
 # 初始化快取
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
-
+cache.clear()
 # 註冊藍圖
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(plans_bp, url_prefix='/plans')

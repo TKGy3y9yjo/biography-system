@@ -268,6 +268,7 @@ def transcribe_audio():
     question_id = request.form.get('question_id')
     if not question_id:
         return jsonify({"error": "缺少 question_id"}), 400
+    language = request.form.get('language', 'zh')  # 預設為中文
 
     # 保存檔案
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
@@ -280,7 +281,7 @@ def transcribe_audio():
             transcription = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file,
-                language="zh"
+                language=language  # 使用用戶選擇的語言
             )
         text = transcription.text
     except Exception as e:
@@ -292,13 +293,12 @@ def transcribe_audio():
     # 寫入 answers，並重用 submit_answer 的邏輯以產生下一題
     with ENGINE.connect() as conn:
         conn.execute(
-            text("INSERT INTO answers (user_id, question_id, answer) VALUES (:uid,:qid,:ans)"),
+            text("INSERT INTO answers (user_id, question_id, answer) VALUES (:uid, :qid, :ans)"),
             {"uid": user_id, "qid": question_id, "ans": text},
         )
         conn.commit()
 
-    # 直接重用 submit_answer 流程：手動呼叫內部函式
-    # （避免重複寫邏輯，可考慮抽取共用函式）
+    # 直接重用 submit_answer 流程
     request.get_json = lambda: {"question_id": question_id, "answer": text}
     return submit_answer()
 @biography_bp.route('/transcribe-only', methods=['POST'])
@@ -311,6 +311,7 @@ def transcribe_only():
     file = request.files['file']
     if not file.filename:
         return jsonify({"error": "未選擇檔案"}), 400
+    language = request.form.get('language', 'zh')  # 預設為中文
 
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
     file.save(filepath)
@@ -321,7 +322,7 @@ def transcribe_only():
             transcription = client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file,
-                language="zh"
+                language=language  # 使用用戶選擇的語言
             )
         text = transcription.text
     except Exception as e:

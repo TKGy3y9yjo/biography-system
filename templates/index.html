@@ -224,6 +224,13 @@
             <input id="question-id" type="hidden">
 
           <!-- 🎙️ 錄音按鈕放輸入框上方 -->
+          <div>
+            <label for="language">選擇語音語言：</label>
+            <select id="language" name="language">
+              <option value="zh">中文</option>
+              <option value="en">英文</option>
+            </select>
+          </div>
           <div id="record-controls" class="mb-2">
             <button id="start-record" onclick="startRecording()" class="bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-500 hover:to-pink-500 text-white p-3 rounded-xl w-full transition-all duration-300 transform hover:scale-105 shadow-md">🎙️ 開始錄音</button>
             <button id="stop-record" onclick="stopRecordingAndUpload()" class="bg-gradient-to-r from-red-400 to-rose-400 hover:from-red-500 hover:to-rose-500 text-white p-3 rounded-xl w-full hidden transition-all duration-300 transform hover:scale-105 shadow-md">⏹️ 停止錄音並上傳</button>
@@ -300,6 +307,11 @@
                 <option value="積極">積極</option>
                 <option value="感性">感性</option>
                 <option value="勵志">勵志</option>
+                <option value="反思">反思</option>
+                <option value="真摯">真摯</option>
+                <option value="懷舊">懷舊</option>
+                <option value="平靜">平靜</option>
+                <option value="幽默">幽默</option>
               </select>
             </div>
             <div>
@@ -706,6 +718,7 @@
       const formData = new FormData();
       formData.append('file', audioFile);
       formData.append('question_id', questionId);
+      
 
       try {
         const response = await fetch('http://localhost:5000/biography/transcribe', {
@@ -858,6 +871,7 @@
     async function transcribeToTextArea(audioBlob) {
       const formData = new FormData();
       formData.append('file', audioBlob, 'recording.webm');
+      formData.append('language', document.getElementById('language').value); // 添加語言參數
       
       try {
         const response = await fetch('http://localhost:5000/biography/transcribe-only', {
@@ -869,16 +883,16 @@
         });
 
         const data = await response.json();
-        console.log('轉錄回應:', data); // 加上這行來看詳細錯誤
+        console.log('轉錄回應:', data);
         
         if (data.transcription) {
           insertParagraph(data.transcription);
         } else {
-          console.error('轉錄失敗:', data); // 加上這行
+          console.error('轉錄失敗:', data);
           showAlert('語音轉換失敗: ' + (data.error || '未知錯誤'), 'error');
         }
       } catch (error) {
-        console.error('網路錯誤:', error); // 加上這行
+        console.error('網路錯誤:', error);
         showAlert('網路連接失敗，請檢查後端服務是否啟動', 'error');
       }
     }
